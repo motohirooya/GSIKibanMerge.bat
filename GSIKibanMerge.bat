@@ -4,6 +4,7 @@ REM ‘“y’n—‰@Šî”Õ’n}î•ñzip‚ğ‰ğ“€‚µAŠî–{€–Ú‚Íƒ^ƒO‚²‚Æ‚Éƒ}[ƒWA”’l•W‚ƒ‚ƒfƒ
 REM g‚¢•û@OSGeo4W Shell‚ğŠJ‚¢‚ÄAGSIKibanMerge.bat <‘“y’n—‰@Šî”Õ’n}‚Ì*.zipƒtƒ@ƒCƒ‹‚ğ•Û‘¶‚µ‚½ƒtƒHƒ‹ƒ_ƒpƒX>
 REM Šù’m‚Ì–â‘è@Šî–{€–Ú‚Ìƒtƒ@ƒCƒ‹”‚ª‘½‚¢‚ÆAcmd‚Åg—p‚Å‚«‚é•¶š—ñ‚ÌÅ‘å’·‚Í 8191 •¶š‚É’ïG‚·‚é
 REM 2023/8/6 ì¬
+REM 2023/8/15 Šî–{€–Ú‚ÌDEM‚ª”’l•W‚ƒ‚ƒfƒ‹‚ÌDEM*‚ğE‚Á‚Ä‚¢‚½‚Ì‚ğC³,ì‹ÆƒtƒHƒ‹ƒ_‚ÌŠÂ‹«•Ï”‚ğ’Ç‰Á
 REM https://github.com/motohirooya/GSIKibanMerge.bat
 
 REM ---------------------------------------------
@@ -20,6 +21,12 @@ set TAG=AdmArea AdmPt BldA Cntr CommBdry CommPt Cstline DEM DGHM ElevPt FGDFeatu
 
 REM o—ÍŒ`® gpkg fgb shp
 set OUTPUTFILETYPE=fgb
+
+REM ‘æ1ˆø”‚Ízip‚ÌƒtƒHƒ‹ƒ_AƒTƒuƒtƒHƒ‹ƒ_‚à‘ÎÛ
+set FOLDER=%~1
+
+REM ì‹ÆƒtƒHƒ‹ƒ_
+set WORK=%FOLDER%\data
 
 REM ---------------------------------------------
 REM 
@@ -46,17 +53,15 @@ REM zip‚Ì‰ğ“€
 REM 
 REM ---------------------------------------------
 
-REM ‘æ1ˆø”‚Ízip‚ÌƒtƒHƒ‹ƒ_AƒTƒuƒtƒHƒ‹ƒ_‚à‘ÎÛ
-set FOLDER=%~1
 
-IF EXIST "%FOLDER%\data" (
-	echo dataƒtƒHƒ‹ƒ_‚ªŠù‚É‚ ‚è‚Ü‚·BI—¹‚µ‚Ü‚·B
+IF EXIST "%WORK%" (
+	echo %WORK%ƒtƒHƒ‹ƒ_‚ªŠù‚É‚ ‚è‚Ü‚·BI—¹‚µ‚Ü‚·B
 	exit /b
 ) ELSE (
-	mkdir "%FOLDER%\data"
+	mkdir "%WORK%"
 ) 
 
-for /F "delims=" %%f in ('dir /b /s "%FOLDER%\*.zip"') do %PS% -Command Expand-Archive "%%f" "%FOLDER%\data"
+for /F "delims=" %%f in ('dir /b /s "%FOLDER%\*.zip"') do %PS% -Command Expand-Archive "%%f" "%WORK%"
 
 REM ---------------------------------------------
 REM 
@@ -69,16 +74,16 @@ for %%t in ( %TAG% ) do (
 
 REM xmlƒtƒ@ƒCƒ‹ƒpƒX‚Ìæ“¾
 set XMLFILES=
-for /F "delims=" %%f in ('dir /b /s "%FOLDER%\data\*%%t*.xml"') do set XMLFILES=!XMLFILES! --LAYERS="%%f"
+for /F "delims=" %%f in ('dir /b /s "%WORK%\*%%t-*.xml"') do set XMLFILES=!XMLFILES! --LAYERS="%%f"
 
 REM ƒtƒ@ƒCƒ‹‚ªæ“¾‚Å‚«‚È‚¢ê‡‚ÍÀs‚µ‚È‚¢
 IF [!XMLFILES!] neq [] (
 REM ƒ}[ƒW
-call %QGP% run native:mergevectorlayers !XMLFILES! --OUTPUT="%TEMP%\GSIBadsicMergeTemp1.fgb"
+call %QGP% run native:mergevectorlayers !XMLFILES! --OUTPUT="%WORK%\GSIBadsicMergeTemp1.fgb"
 REM ‘®«–¼‚Ì•ÏX@fid¨fidgsi
-call %QGP% run native:renametablefield --INPUT="%TEMP%\GSIBadsicMergeTemp1.fgb" --FIELD=fid --NEW_NAME=fidgsi --OUTPUT="%TEMP%\GSIBadsicMergeTemp2.fgb"
+call %QGP% run native:renametablefield --INPUT="%WORK%\GSIBadsicMergeTemp1.fgb" --FIELD=fid --NEW_NAME=fidgsi --OUTPUT="%WORK%\GSIBadsicMergeTemp2.fgb"
 REM ‘®«íœ@layer;path
-call %QGP% run native:deletecolumn --INPUT="%TEMP%\GSIBadsicMergeTemp2.fgb" --COLUMN=layer --COLUMN=path --OUTPUT="%FOLDER%\%%t.%OUTPUTFILETYPE%"
+call %QGP% run native:deletecolumn --INPUT="%WORK%\GSIBadsicMergeTemp2.fgb" --COLUMN=layer --COLUMN=path --OUTPUT="%FOLDER%\%%t.%OUTPUTFILETYPE%"
 ) 
 ) 
 
@@ -88,7 +93,7 @@ REM ”’l•W‚ƒ‚ƒfƒ‹‚ğí—Ş•Ê‚Ézip‚É‚Ü‚Æ‚ß‚é
 REM 
 REM ---------------------------------------------
 for %%t in ( DEM5A DEM5B DEM5C DEM10A DEM10B ) do (
-IF EXIST "%FOLDER%\data\*%%t*.xml" %PS% -Command Compress-Archive -Path "%FOLDER%\data\*%%t*.xml" -DestinationPath "%FOLDER%\PACK-%%t.zip"
+IF EXIST "%WORK%\*%%t*.xml" %PS% -Command Compress-Archive -Path "%WORK%\*%%t*.xml" -DestinationPath "%FOLDER%\PACK-%%t.zip"
 ) 
 
 
