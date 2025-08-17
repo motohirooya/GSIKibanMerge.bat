@@ -1,10 +1,10 @@
 @ECHO OFF
 REM GSIKibanMerge.bat
-REM 国土地理院基盤地図情報zipを解凍し、基本項目はタグごとにマージ、数値標高モデルは種類別にzipにまとめる
-REM 使い方　OSGeo4W Shellを開いて、GSIKibanMerge.bat <国土地理院基盤地図の*.zipファイルを保存したフォルダパス>
-REM 既知の問題　基本項目のファイル数が多いと、cmdで使用できる文字列の最大長は 8191 文字に抵触する
-REM 2023/8/6 作成
-REM 2023/8/15 基本項目のDEMが数値標高モデルのDEM*を拾っていたのを修正,作業フォルダの環境変数を追加
+REM 国土地理院基盤地図情報zipを解凍し、基本項目をタグごとにマージ
+REM 　準備　qgis_process-qgis.bat　のパスを修正する（要QGIS 3.36以上）。
+REM 　　　　国土地理院基盤地図情報基本項目のzipをダウンロードし、フォルダにまとめる。
+REM 使い方　エクスプローラで、「GSIKibanMerge.bat」に「国土地理院基盤地図の.zipファイルを保存したフォルダパス」をドロップする。
+
 REM https://github.com/motohirooya/GSIKibanMerge.bat
 
 REM ---------------------------------------------
@@ -12,44 +12,53 @@ REM
 REM パラメータ設定
 REM 
 REM ---------------------------------------------
-REM プログラムへのパス
-set QGP="C:\OSGeo4W\bin\qgis_process-qgis.bat"
-set PS="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
-REM マージするタグ
-set TAG=AdmArea AdmPt BldA Cntr CommBdry CommPt Cstline DEM DGHM ElevPt FGDFeature GCP LeveeEdge RailCL RdArea RdASL RdCompt RdEdg RdMgtBdry RdSgmtA RvrMgtBdry SBArea WA WL WStrA
+REM qgis_process-qgis.batへのパス
+set QP="C:\OSGeo4W\bin\qgis_process-qgis.bat"
+
+REM qgis_process-qgisのオプション
+set OPT=--no-python --skip-loading-plugins
 
 REM 出力形式 gpkg fgb shp
 set OUTPUTFILETYPE=fgb
+
+REM マージするタグ
+set TAG=AdmArea AdmBdry AdmPt BldA BldL Cntr CommBdry CommPt Cstline DEM DEMPt DGHM DGHMPt ElevPt FGDFeature GCP LeveeEdge RailCL RdArea RdASL RdCompt RdEdg RdMgtBdry RdSgmtA RvrMgtBdry SBAPt SBArea SBBdry WA WL WStrA WStrL
+
+REM ---------------------------------------------
+REM 
+REM 引数、プログラム有無の確認、初期化
+REM 
+REM ---------------------------------------------
+REM 引数確認
+IF [%1]==[] (
+	echo GSIKibanMerge.bat
+	echo 国土地理院基盤地図情報zipを解凍し、基本項目をタグごとにマージ
+	echo 使い方　GSIKibanMerge ^<国土地理院基盤地図の*.zipファイルを保存したフォルダパス^>
+	pause
+	exit /b
+) 
+
+REM フォルダ、バッチファイル有無確認
+for %%f in ( %1 %QP% ) do (
+IF NOT EXIST %%f (
+	echo %%f がありません。
+	pause
+	exit /b
+) 
+) 
 
 REM 第1引数はzipのフォルダ、サブフォルダも対象
 set FOLDER=%~1
 
 REM 作業フォルダ
-set WORK=%FOLDER%\data
+set WORK=%FOLDER%\GSIKibanMergeTMP
+
+setlocal enabledelayedexpansion
 
 REM ---------------------------------------------
 REM 
-REM 引数、プログラム有無の確認
-REM 
-REM ---------------------------------------------
-IF [%1]==[] (
-	echo GSIKibanMerge.bat
-	echo 国土地理院基盤地図情報zipを回答し、基本項目はタグごとにマージ、数値標高モデルは種類別にzipにまとめる
-	echo 使い方　OSGeo4W Shellを開いて、GSIKibanMerge.bat ^<国土地理院基盤地図の*.zipファイルを保存したフォルダパス^>
-	exit /b
-) 
-
-for %%f in ( %1 %QGP% %PS% ) do (
-IF NOT EXIST %%f (
-	echo %%f がありません。
-	exit /b
-) 
-) 
-
-REM ---------------------------------------------
-REM 
-REM zipの解凍
+REM workフォルダの作成、zipの解凍
 REM 
 REM ---------------------------------------------
 
@@ -61,39 +70,32 @@ IF EXIST "%WORK%" (
 	mkdir "%WORK%"
 ) 
 
-for /F "delims=" %%f in ('dir /b /s "%FOLDER%\*.zip"') do %PS% -Command Expand-Archive "%%f" "%WORK%"
+for /F "delims=" %%f in ('dir /b /s "%FOLDER%\*.zip"') do powershell -Command Expand-Archive "%%f" "%WORK%"
+
 
 REM ---------------------------------------------
 REM 
 REM 基本項目のマージ
 REM 
 REM ---------------------------------------------
+REM ogrmerge.bat へのパスを通す。
+call %QP% -v
 
-setlocal enabledelayedexpansion
 for %%t in ( %TAG% ) do (
 
-REM xmlファイルパスの取得
-set XMLFILES=
-for /F "delims=" %%f in ('dir /b /s "%WORK%\*%%t-*.xml"') do set XMLFILES=!XMLFILES! --LAYERS="%%f"
+REM 該当TAGのxmlファイルが存在する場合はマージを行う
+IF EXIST "%WORK%\*%%t-*.xml" (
 
-REM ファイルが取得できない場合は実行しない
-IF [!XMLFILES!] neq [] (
-REM マージ
-call %QGP% run native:mergevectorlayers !XMLFILES! --OUTPUT="%WORK%\GSIBadsicMergeTemp1.fgb"
+REM マージ,ogrmergeの出力は上書きしないので、ファイル名をユニークにする。
+call ogrmerge.bat -single -o "%WORK%\GSIBadsicMergeTemp1%%t.fgb" "%WORK%\*%%t-*.xml"
+
+REM 地理院の測地成果2024にgdalが未対応のため、暫定的にXYを入れ替え
+call %QP% %OPT% run native:swapxy --INPUT="%WORK%\GSIBadsicMergeTemp1%%t.fgb" --OUTPUT="%WORK%\GSIBadsicMergeTemp2%%t.fgb"
+
 REM 属性名の変更　fid→fidgsi
-call %QGP% run native:renametablefield --INPUT="%WORK%\GSIBadsicMergeTemp1.fgb" --FIELD=fid --NEW_NAME=fidgsi --OUTPUT="%WORK%\GSIBadsicMergeTemp2.fgb"
-REM 属性削除　layer;path
-call %QGP% run native:deletecolumn --INPUT="%WORK%\GSIBadsicMergeTemp2.fgb" --COLUMN=layer --COLUMN=path --OUTPUT="%FOLDER%\%%t.%OUTPUTFILETYPE%"
-) 
-) 
+call %QP% %OPT% run native:renametablefield --INPUT="%WORK%\GSIBadsicMergeTemp2%%t.fgb" --FIELD=fid --NEW_NAME=fidgsi --OUTPUT="%FOLDER%\%%t.%OUTPUTFILETYPE%"
 
-REM ---------------------------------------------
-REM 
-REM 数値標高モデルを種類別にzipにまとめる
-REM 
-REM ---------------------------------------------
-for %%t in ( DEM5A DEM5B DEM5C DEM10A DEM10B ) do (
-IF EXIST "%WORK%\*%%t*.xml" %PS% -Command Compress-Archive -Path "%WORK%\*%%t*.xml" -DestinationPath "%FOLDER%\PACK-%%t.zip"
+) 
 ) 
 
 
@@ -131,3 +133,13 @@ REM 	WA	水域(Water Area)
 REM 	WL	水涯線(Water Line)
 REM 	WStrA	水部構造物面(Waterside Structure Area)
 REM 	WStrL	水部構造物線(Waterside Structure Line)
+
+REM 履歴
+REM 2023/8/6 作成
+REM 2023/8/15 基本項目のDEMが数値標高モデルのDEM*を拾っていたのを修正,作業フォルダの環境変数を追加
+REM 2023/10/30 ローカル限定（NAS不可）。ファイル数の制限緩和
+REM 2024/2/3 osgeo4w shellではなく通常のcmdから呼び出すよう変更（osgeo4w shellはpowershellへのパスが無いので使えない）。--no-python追加（多少高速化？）
+REM 2024/4/11 マージをogrmerge.batに変更。ワイルドカード指定によりcmdの文字数制限を回避。
+REM 2024/5/10 数値標高モデルDEM1A　追加
+REM 2025/6/12 数値標高モデルのzipまとめを削除
+REM 2025/8/17 地理院の測地成果2024にgdalが未対応のため、暫定的にXYを入れ替え
